@@ -1,1 +1,806 @@
+{% comment %}
+  DL Co-Pilot — Shell (UI + Wiring only)
+  -------------------------------------
+  ✅ Floating CTA (shimmer text) anchored above floating nav
+  ✅ CTA appears on scroll (window + product right-column containers)
+  ✅ CTA hides after X ms of no scroll
+  ✅ Click CTA opens chat panel
+  ✅ This file contains:
+     - Markup
+     - CSS
+     - Boot loader + scroll binding
+  ❌ No sizing logic here
+  ❌ No styling logic here
+  ❌ No order logic here
+
+  NOTE:
+  Shopify "range" settings must have at most 101 steps.
+  So: 0..200 step 1 = 201 steps ❌
+       0..200 step 2 = 101 steps ✅
+{% endcomment %}
+
+{% if section.settings.enable_copilot %}
+<section
+  id="DLCopilotRoot"
+  class="dl-copilot-root"
+  data-dl-copilot-root
+  style="
+    --dl-copilot-bottom: {{ section.settings.cta_bottom_offset | default: 92 }}px;
+    --dl-copilot-hide-ms: {{ section.settings.cta_hide_after_ms | default: 5000 }};
+    --dl-copilot-panel-w: {{ section.settings.panel_width | default: 360 }}px;
+    --dl-copilot-panel-h: {{ section.settings.panel_height | default: 520 }}px;
+    --dl-copilot-z-cta: {{ section.settings.zindex_cta | default: 2147483646 }};
+    --dl-copilot-z-panel: {{ section.settings.zindex_panel | default: 2147483647 }};
+    --dl-copilot-panel-bg: {{ section.settings.panel_bg | default: '#ffffff' }};
+    --dl-copilot-panel-text: {{ section.settings.panel_text | default: '#000000' }};
+    --dl-copilot-accent: {{ section.settings.accent_color | default: '#c9b06d' }};
+  "
+>
+  <style>
+    /* ============================================================
+       DL CO-PILOT — ROOT GUARD
+    ============================================================ */
+    .dl-copilot-root,
+    .dl-copilot-root *{
+      box-sizing: border-box;
+    }
+
+    /* ============================================================
+       DL CO-PILOT — FLOATING CTA (EDITORIAL SHIMMER)
+    ============================================================ */
+    .dl-copilot-cta{
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: var(--dl-copilot-bottom);
+      z-index: var(--dl-copilot-z-cta);
+      display: inline-flex;
+      align-items: center;
+      gap: .45em;
+      background: none;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .28s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .dl-copilot-cta.is-visible{
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .dl-copilot-cta-text{
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: .035em;
+      white-space: nowrap;
+
+      background: linear-gradient(
+        90deg,
+        rgba(255,255,255,0.65) 0%,
+        var(--dl-copilot-accent) 38%,
+        rgba(255,255,255,0.65) 78%
+      );
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+
+      background-size: 200% 100%;
+      animation: dlCopilotShimmer 2.8s linear infinite;
+    }
+
+    .dl-copilot-cta-icon{
+      width: 18px;
+      height: 18px;
+      fill: var(--dl-copilot-accent);
+      opacity: .9;
+      transform: translateY(-.5px);
+    }
+
+    @keyframes dlCopilotShimmer{
+      0%{ background-position: 0% 50%; }
+      100%{ background-position: 200% 50%; }
+    }
+
+    /* ============================================================
+       DL CO-PILOT — PANEL
+    ============================================================ */
+    .dl-copilot-panel{
+      position: fixed;
+      right: 26px;
+      bottom: 26px;
+      z-index: var(--dl-copilot-z-panel);
+      width: var(--dl-copilot-panel-w);
+      height: var(--dl-copilot-panel-h);
+      max-width: calc(100vw - 52px);
+      max-height: calc(100vh - 52px);
+        display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+
+      background: var(--dl-copilot-panel-bg);
+      color: var(--dl-copilot-panel-text);
+
+      border-radius: 18px;
+      box-shadow:
+        0 30px 80px rgba(0,0,0,0.18),
+        0 10px 26px rgba(0,0,0,0.10);
+
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(12px);
+      transition: opacity .28s ease, transform .28s ease;
+      overflow: hidden;
+    }
+
+    .dl-copilot-panel.is-open{
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .dl-copilot-panel__top{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+
+      background: rgba(255,255,255,0.86);
+      backdrop-filter: blur(14px) saturate(160%);
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+    }
+
+    .dl-copilot-panel__title{
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13.5px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      color: #000;
+      margin: 0;
+      min-width: 0;
+    }
+
+    .dl-copilot-panel__dot{
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.06);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+    }
+
+    .dl-copilot-panel__dot svg{
+      width: 14px;
+      height: 14px;
+      fill: var(--dl-copilot-accent);
+    }
+
+    .dl-copilot-close{
+      appearance: none;
+      border: 0;
+      background: transparent;
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .18s ease;
+    }
+
+    .dl-copilot-close:hover{
+      background: rgba(0,0,0,0.06);
+    }
+
+    .dl-copilot-close svg{
+      width: 18px;
+      height: 18px;
+      fill: #000;
+      opacity: .78;
+    }
+
+    .dl-copilot-body{
+        flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+      overflow: auto;
+      padding: 14px 14px 10px;
+    }
+
+    .dl-copilot-msgs{
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .dl-copilot-msg{
+      max-width: 92%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: var(--dl-copilot-panel-text);
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .dl-copilot-msg.ai{
+      align-self: flex-start;
+      background: rgba(0,0,0,0.04);
+    }
+
+    .dl-copilot-msg.user{
+      align-self: flex-end;
+      background: rgba(0,0,0,0.08);
+    }
+
+    .dl-copilot-msg p{ margin: 0 0 8px; font-size: 13.5px; }
+    .dl-copilot-msg p:last-child{ margin-bottom: 0; }
+    .dl-copilot-msg strong{ font-weight: 600; }
+    .dl-copilot-msg ul{ margin: 6px 0 8px 18px; padding: 0; }
+    .dl-copilot-msg li{ margin: 4px 0; }
+
+    .dl-copilot-composer{
+      display: flex;
+      gap: 10px;
+      padding: 12px 14px;
+  flex: 0 0 auto;
+  margin-top: auto;
+
+      border-top: 1px solid rgba(0,0,0,0.08);
+
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: blur(14px) saturate(160%);
+    }
+
+    .dl-copilot-input{
+      flex: 1 1 auto;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,0.12);
+      font-size: 13.5px;
+      outline: none;
+      background: rgba(255,255,255,0.95);
+      color: #000;
+    }
+
+    .dl-copilot-input:disabled{
+      opacity: 0.55;
+      cursor: not-allowed;
+      background: rgba(0,0,0,0.03);
+    }
+
+    .dl-copilot-send{
+      appearance: none;
+      border: 0;
+      background: #000;
+      color: #fff;
+      border-radius: 14px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    @media (max-width: 768px){
+      .dl-copilot-panel{
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        max-width: none;
+        max-height: none;
+        border-radius: 0;
+      }
+    }
+
+    /* ============================================================
+   DL CO-PILOT — PILL UI (OPTIONS)
+   - Styles: .dl-copilot-pillgroup / .dl-copilot-options wrapper
+   - Buttons: .dl-copilot-pill / .dl-copilot-option / .dl-copilot-quick
+   - Matches your site: clean, minimal, editorial
+============================================================ */
+
+#DLCopilotPanel .dl-copilot-pillgroup,
+#DLCopilotPanel .dl-copilot-options{
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+#DLCopilotPanel .dl-copilot-pills,
+#DLCopilotPanel .dl-copilot-options__row{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+#DLCopilotPanel .dl-copilot-pill,
+#DLCopilotPanel .dl-copilot-option,
+#DLCopilotPanel .dl-copilot-quick{
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 8px 12px;
+  min-height: 34px;
+
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.14);
+  background: rgba(255,255,255,0.95);
+
+  color: rgba(0,0,0,0.88);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+
+  cursor: pointer;
+  user-select: none;
+
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+
+#DLCopilotPanel .dl-copilot-pill:hover,
+#DLCopilotPanel .dl-copilot-option:hover,
+#DLCopilotPanel .dl-copilot-quick:hover{
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.18);
+}
+
+#DLCopilotPanel .dl-copilot-pill:active,
+#DLCopilotPanel .dl-copilot-option:active,
+#DLCopilotPanel .dl-copilot-quick:active{
+  transform: translateY(1px);
+}
+
+/* Keyboard focus (clean) */
+#DLCopilotPanel .dl-copilot-pill:focus-visible,
+#DLCopilotPanel .dl-copilot-option:focus-visible,
+#DLCopilotPanel .dl-copilot-quick:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.12);
+}
+
+/* ============================================================
+   DL CO-PILOT — COMPOSER (INPUT + SEND)
+   Fixes the “dead input looks broken” issue by styling
+   readonly + locked class states.
+============================================================ */
+
+#DLCopilotPanel .dl-copilot-composer{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+#DLCopilotPanel .dl-copilot-input{
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.98);
+
+  color: rgba(0,0,0,0.88);
+  font-size: 14px;
+  line-height: 1.2;
+
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04) inset;
+}
+
+#DLCopilotPanel .dl-copilot-input::placeholder{
+  color: rgba(0,0,0,0.45);
+}
+
+/* Locked state: readonly + .is-locked (covers both) */
+#DLCopilotPanel .dl-copilot-input[readonly],
+#DLCopilotPanel .dl-copilot-input.is-locked{
+  background: rgba(0,0,0,0.02);
+  border-color: rgba(0,0,0,0.10);
+  color: rgba(0,0,0,0.55);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+#DLCopilotPanel .dl-copilot-send{
+  min-height: 44px;
+  padding: 10px 14px;
+
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.10);
+
+  background: rgba(0,0,0,0.92);
+  color: #fff;
+
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 160ms ease;
+}
+
+#DLCopilotPanel .dl-copilot-send:hover{
+  transform: translateY(-1px);
+}
+
+#DLCopilotPanel .dl-copilot-send:active{
+  transform: translateY(0px);
+}
+
+/* Disabled send button */
+#DLCopilotPanel .dl-copilot-send[disabled],
+#DLCopilotPanel .dl-copilot-send.is-disabled{
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+  </style>
+
+  <!-- ============================================================
+       FLOATING CTA (SHIMMER)
+  ============================================================ -->
+  <button
+    type="button"
+    class="dl-copilot-cta dl-copilot-float"
+    id="DLCopilotCTA"
+    data-dl-copilot-cta
+    aria-label="{{ section.settings.cta_aria_label | escape }}"
+  >
+    <span class="dl-copilot-cta-text">
+      {{ section.settings.cta_text }}
+    </span>
+
+    <svg class="dl-copilot-cta-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 2.4l1.3 4.4c.2.6.7 1.1 1.3 1.3l4.4 1.3-4.4 1.3c-.6.2-1.1.7-1.3 1.3L12 16.4l-1.3-4.4c-.2-.6-.7-1.1-1.3-1.3L5 9.4l4.4-1.3c.6-.2.7-1.1 1.3-1.3L12 2.4z"/>
+    </svg>
+  </button>
+
+  <!-- ============================================================
+       PANEL
+  ============================================================ -->
+  <div
+    id="DLCopilotPanel"
+    class="dl-copilot-panel"
+    data-dl-copilot-panel
+    aria-hidden="true"
+    role="dialog"
+    aria-label="{{ section.settings.panel_title | escape }}"
+  >
+    <div class="dl-copilot-panel__top">
+      <h3 class="dl-copilot-panel__title">
+        <span class="dl-copilot-panel__dot" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path d="M12 2.4l1.3 4.4c.2.6.7 1.1 1.3 1.3l4.4 1.3-4.4 1.3c-.6.2-1.1.7-1.3 1.3L12 16.4l-1.3-4.4c-.2-.6-.7-1.1-1.3-1.3L5 9.4l4.4-1.3c.6-.2.7-1.1 1.3-1.3L12 2.4z"/>
+          </svg>
+        </span>
+        <span>{{ section.settings.panel_title }}</span>
+      </h3>
+
+      <button
+        type="button"
+        class="dl-copilot-close"
+        id="DLCopilotClose"
+        data-dl-copilot-close
+        aria-label="Close"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M18.3 5.7a1 1 0 0 0-1.4 0L12 10.6 7.1 5.7a1 1 0 1 0-1.4 1.4l4.9 4.9-4.9 4.9a1 1 0 1 0 1.4 1.4l4.9-4.9 4.9 4.9a1 1 0 0 0 1.4-1.4l-4.9-4.9 4.9-4.9a1 1 0 0 0 0-1.4z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div
+      class="dl-copilot-body"
+      id="DLCopilotBody"
+      data-dl-copilot-body
+    >
+      <div class="dl-copilot-msgs" id="DLCopilotMsgs"></div>
+    </div>
+
+    <div class="dl-copilot-composer">
+      <input
+        id="DLCopilotInput"
+        class="dl-copilot-input"
+        data-dl-copilot-input
+        type="text"
+        placeholder="{{ section.settings.input_placeholder | escape }}"
+        autocomplete="off"
+      >
+      <button
+        id="DLCopilotSend"
+        class="dl-copilot-send"
+        data-dl-copilot-send
+        type="button"
+      >
+        {{ section.settings.send_label }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       CONFIG (CORE EXPECTS window.DLCopilotConfig)
+       Keep window.DLCOPILOT_CONFIG for your shell CTA script
+  ============================================================ -->
+  <script>
+    window.DLCopilotConfig = {
+      version: "v1",
+      storageKey: "{{ section.settings.storage_key | default: 'dl_copilot_v1' }}",
+      debug: false,
+
+      ctaHideAfterMs: Number("{{ section.settings.cta_hide_after_ms | default: 5000 }}"),
+      selectors: {
+        root: "[data-dl-copilot-root]",
+        cta: "[data-dl-copilot-cta]",
+        panel: "[data-dl-copilot-panel]",
+        close: "[data-dl-copilot-close]",
+        body: "[data-dl-copilot-body]",
+        input: "[data-dl-copilot-input]",
+        send: "[data-dl-copilot-send]"
+      },
+
+      extraScrollContainersSelector: "{{ section.settings.scroll_containers_selector | escape }}"
+    };
+
+    window.DLCOPILOT_CONFIG = window.DLCOPILOT_CONFIG || {};
+    window.DLCOPILOT_CONFIG.hideAfterMs = Number("{{ section.settings.cta_hide_after_ms | default: 5000 }}");
+    window.DLCOPILOT_CONFIG.scrollContainersSelector = "{{ section.settings.scroll_containers_selector | escape }}";
+  </script>
+
+  <!-- ============================================================
+       SHELL: CTA VISIBILITY + PANEL OPEN/CLOSE (YOUR EXISTING WIRING)
+  ============================================================ -->
+  <script>
+    (function(){
+      if (window.__DL_COPILOT_SHELL_READY__) return;
+      window.__DL_COPILOT_SHELL_READY__ = true;
+
+      function getEl(id){ return document.getElementById(id); }
+
+      var cta   = getEl("DLCopilotCTA");
+      var panel = getEl("DLCopilotPanel");
+      var close = getEl("DLCopilotClose");
+
+      if (!cta || !panel) return;
+
+      var hideTimer = null;
+      var hideAfter = Number(window.DLCOPILOT_CONFIG.hideAfterMs || 5000);
+
+      function showCTA(){
+        cta.classList.add("is-visible");
+      }
+
+      function hideCTA(){
+        cta.classList.remove("is-visible");
+      }
+
+      function bumpCTAVisibility(){
+        showCTA();
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(hideCTA, hideAfter);
+      }
+
+      function openPanel(){
+        panel.classList.add("is-open");
+        panel.setAttribute("aria-hidden", "false");
+      }
+
+      function closePanel(){
+        panel.classList.remove("is-open");
+        panel.setAttribute("aria-hidden", "true");
+      }
+
+      cta.addEventListener("click", function(){
+        bumpCTAVisibility();
+        openPanel();
+        if (window.DLCopilot && typeof window.DLCopilot.open === "function") {
+          window.DLCopilot.open();
+        }
+      });
+
+      if (close) {
+        close.addEventListener("click", function(){
+          closePanel();
+          if (window.DLCopilot && typeof window.DLCopilot.close === "function") {
+            window.DLCopilot.close();
+          }
+        });
+      }
+
+      document.addEventListener("keydown", function(e){
+        if (e.key === "Escape") {
+          closePanel();
+          if (window.DLCopilot && typeof window.DLCopilot.close === "function") {
+            window.DLCopilot.close();
+          }
+        }
+      });
+
+      function bindScroll(el){
+        if (!el) return;
+        if (el === window) {
+          window.addEventListener("scroll", bumpCTAVisibility, { passive: true });
+          return;
+        }
+        el.addEventListener("scroll", bumpCTAVisibility, { passive: true });
+      }
+
+      bindScroll(window);
+
+      var selector = (window.DLCOPILOT_CONFIG.scrollContainersSelector || "").trim();
+      if (selector) {
+        var nodes = document.querySelectorAll(selector);
+        if (nodes && nodes.length) {
+          nodes.forEach(function(n){ bindScroll(n); });
+        }
+      }
+
+      bumpCTAVisibility();
+
+      window.__DL_COPILOT_BUMP_CTA__ = bumpCTAVisibility;
+    })();
+  </script>
+
+  <!-- ============================================================
+       MODULES (LOGIC LIVES IN ASSETS)
+       Order matters:
+         core -> products -> journal -> sizing -> styling -> order
+  ============================================================ -->
+  <script src="{{ 'dl-copilot-core.js' | asset_url }}" defer></script>
+  <script src="{{ 'dl-copilot-products.js' | asset_url }}" defer></script>
+  <script src="{{ 'dl-copilot-journal.js' | asset_url }}" defer></script>
+  <script src="{{ 'dl-copilot-sizing.js' | asset_url }}" defer></script>
+  <script src="{{ 'dl-copilot-styling.js' | asset_url }}" defer></script>
+  <script src="{{ 'dl-copilot-order.js' | asset_url }}" defer></script>
+</section>
+{% endif %}
+
+{% schema %}
+{
+  "name": "DL Co-Pilot",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enable_copilot",
+      "label": "Enable Co-Pilot",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "cta_text",
+      "label": "CTA text",
+      "default": "Need help? talk to our Co-Pilot"
+    },
+    {
+      "type": "text",
+      "id": "cta_aria_label",
+      "label": "CTA aria label",
+      "default": "Open Co-Pilot"
+    },
+    {
+      "type": "range",
+      "id": "cta_bottom_offset",
+      "label": "CTA bottom offset (px)",
+      "min": 0,
+      "max": 200,
+      "step": 2,
+      "default": 92
+    },
+    {
+      "type": "range",
+      "id": "cta_hide_after_ms",
+      "label": "CTA hide after idle (ms)",
+      "min": 1000,
+      "max": 9900,
+      "step": 100,
+      "default": 5000
+    },
+    {
+      "type": "text",
+      "id": "panel_title",
+      "label": "Panel title",
+      "default": "Drape Layers Co-Pilot"
+    },
+    {
+      "type": "text",
+      "id": "input_placeholder",
+      "label": "Input placeholder",
+      "default": "Choose an option above to begin"
+    },
+    {
+      "type": "text",
+      "id": "send_label",
+      "label": "Send button label",
+      "default": "Send"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent color",
+      "default": "#c9b06d"
+    },
+    {
+      "type": "color",
+      "id": "panel_bg",
+      "label": "Panel background",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "panel_text",
+      "label": "Panel text color",
+      "default": "#000000"
+    },
+    {
+      "type": "range",
+      "id": "panel_width",
+      "label": "Panel width (px)",
+      "min": 280,
+      "max": 520,
+      "step": 10,
+      "default": 360
+    },
+    {
+      "type": "range",
+      "id": "panel_height",
+      "label": "Panel height (px)",
+      "min": 360,
+      "max": 760,
+      "step": 10,
+      "default": 520
+    },
+    {
+      "type": "text",
+      "id": "storage_key",
+      "label": "LocalStorage key",
+      "default": "dl_copilot_v1"
+    },
+    {
+      "type": "text",
+      "id": "scroll_containers_selector",
+      "label": "Extra scroll container selectors (desktop PDP split column)",
+      "default": ".product__info, .product__details, .dl-product-info, [data-product-info]"
+    },
+    {
+      "type": "number",
+      "id": "zindex_cta",
+      "label": "CTA z-index",
+      "default": 2147483646
+    },
+    {
+      "type": "number",
+      "id": "zindex_panel",
+      "label": "Panel z-index",
+      "default": 2147483647
+    }
+  ],
+  "presets": [
+    {
+      "name": "DL Co-Pilot"
+    }
+  ]
+}
+{% endschema %}
 
